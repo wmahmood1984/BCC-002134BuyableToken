@@ -1,0 +1,307 @@
+pragma solidity ^0.6.0;
+
+import "./IERC20.sol";
+import "./SafeMath.sol";
+import "./AddressLibrary.sol";
+import "./TimestampLibrary.sol";
+
+
+contract BuyableTokenExtended is IERC20{
+    
+    //LIbrary to be used 
+    using SafeMath for uint256;
+    using Address for address;
+    using BokkyPooBahsDateTimeLibrary for uint256;
+    
+    //Mappings to be used 
+        //mapping to hold balances against EOA accounts
+        mapping (address => uint256) private _balances;
+
+        //mapping to hold approved allowance of token to certain address
+        //       Owner               Spender    allowance
+        mapping (address => mapping (address => uint256)) private _allowances;
+    
+        //mapping to identify the time when buyer bought the token
+        mapping (address => uint256) private BuyTimeStamp;
+    
+     
+
+    //All state level variables
+    
+        //Constants for time claculation
+        uint public constant SECONDS_PER_DAY = 24 * 60 * 60;
+        uint public constant SECONDS_PER_HOUR = 60 * 60;
+        uint public constant SECONDS_PER_MINUTE = 60;
+        int public constant OFFSET19700101 = 2440588;
+    
+    
+        //Variables at Contract level
+            //Variables for standard features 
+            address public owner;
+            string public name;
+            string public symbol;
+            uint8 public decimals;
+            uint256 private _totalSupply;
+        
+            //Variables for extended features
+            address[] public approver;
+            uint public price = 10;
+            bool public holdActive;
+        
+    //Events to be used
+    
+        event log(string);
+    
+   
+    // Constructor of the Contract
+    constructor () public {
+        name = "WM's Buayable Token";
+        symbol = "WMC";
+        decimals = 4;
+        owner = msg.sender;
+        approver.push(owner);
+        //1 million tokens to be generated
+        //1 * (10**18)  = 1;
+        
+        _totalSupply = 1000000 * (10 ** uint256(decimals));
+        
+        //transfer total supply to owner
+        _balances[owner] = _totalSupply;
+        
+        //fire an event on transfer of tokens
+        emit Transfer(address(this),owner,_totalSupply);
+     }
+     
+    
+    
+    // Modifiers to be used
+    
+        //Modifer to make sure that the contract is active by the owner
+        modifier isActive(){
+            require(holdActive = true,"BCC1: ");
+            _;
+        }
+   
+        // modifier to make sure that only owner can transact
+        modifier onlyOwner(){
+        require(msg.sender == owner,"BCC1: Only owner can execute this feature");
+        _;
+        }
+    
+        //Modifier to make sure tha tonly approve can change price 
+        modifier isApprover() {
+            for (uint8 i =0; i<=approver.length; i++){
+            if(approver[i]==msg.sender){
+            _;
+            break;
+            }
+            } 
+            } 
+            
+            
+     //Function to implement time features
+        
+        function _now() private returns (uint timestamp) {
+        timestamp = now;}
+        
+        function subMonths(uint timestamp, uint _months) public pure returns (uint newTimestamp) {
+        newTimestamp = BokkyPooBahsDateTimeLibrary.subMonths(timestamp, _months);
+        }
+    
+   
+   
+   // Fallback Function
+           fallback() payable external{
+            emit log("fallback()");
+        }
+    
+    
+    // Functions for Standard features of Token
+        /**
+        * @dev See {IERC20-totalSupply}.
+        */
+        
+        function totalSupply() public view override returns (uint256) {
+            return _totalSupply;
+        }
+
+        /**
+         * @dev See {IERC20-balanceOf}.
+        */
+        function balanceOf(address account) public view override returns (uint256) {
+            return _balances[account];
+        }
+
+        /**
+        * @dev See {IERC20-transfer}.
+        *
+        * Requirements:
+        *
+        * - `recipient` cannot be the zero address.
+        * - the caller must have a balance of at least `amount`.
+        */
+        function transfer(address recipient, uint256 amount) public virtual  override returns (bool) {
+            address sender = msg.sender;
+            require(sender != address(0), "BCC1: transfer from the zero address");
+            require(recipient != address(0), "BCC1: transfer to the zero address");
+            require(_balances[sender] > amount,"BCC1: transfer amount exceeds balance");
+
+            //decrease the balance of token sender account
+            _balances[sender] = _balances[sender].sub(amount);
+        
+            //increase the balance of token recipient account
+            _balances[recipient] = _balances[recipient].add(amount);
+
+            emit Transfer(sender, recipient, amount);
+            return true;
+        }
+    
+   
+   
+
+        /**
+        * @dev See {IERC20-allowance}.
+        */
+        function allowance(address tokenOwner, address spender) public view virtual  override returns (uint256) {
+            return _allowances[tokenOwner][spender];
+        }
+
+
+
+        /**
+        * @dev See {IERC20-approve}.
+        * msg.sender: TokenOwner;
+        * Requirements:
+        *
+        * - `spender` cannot be the zero address.
+        */
+        function approve(address spender, uint256 amount) public virtual override  returns (bool) {
+            address tokenOwner = msg.sender;
+            require(tokenOwner != address(0), "BCC1: approve from the zero address");
+            require(spender != address(0), "BCC1: approve to the zero address");
+        
+            _allowances[tokenOwner][spender] = amount;
+        
+            emit Approval(tokenOwner, spender, amount);
+            return true;
+        }
+
+
+
+        /**
+        * @dev See {IERC20-transferFrom}.
+        *
+        * E    mits an {Approval} event indicating the updated allowance. This is not
+        * required by the EIP. See the note at the beginning of {ERC20};
+        * msg.sender: Spender
+        * Requirements:
+        * - `sender` and `recipient` cannot be the zero address.
+        * - `sender` must have a balance of at least `amount`.
+        * - the caller must have allowance for ``sender``'s tokens of at least
+        * `amount`.
+        */
+        function transferFrom(address tokenOwner, address recipient, uint256 amount) public  virtual override returns (bool) {
+            address spender = msg.sender;
+            uint256 _allowance = _allowances[tokenOwner][spender];
+            require(_allowance > amount, "BCC1: transfer amount exceeds allowance");
+        
+            //deducting allowance
+            _allowance = _allowance.sub(amount);
+        
+            //--- start transfer execution -- 
+        
+            //owner decrease balance
+            _balances[tokenOwner] =_balances[tokenOwner].sub(amount); 
+        
+            //transfer token to recipient;
+            _balances[recipient] = _balances[recipient].add(amount);
+        
+            emit Transfer(tokenOwner, recipient, amount);
+            //-- end transfer execution--
+        
+            //decrease the approval amount;
+            _allowances[tokenOwner][spender] = _allowance;
+        
+            emit Approval(tokenOwner, spender, amount);
+        
+            return true;
+        }
+     
+   
+   
+    
+    //Functions of extended features
+        function ownershipTransfer(address newOwner) public onlyOwner virtual {
+            owner = newOwner;
+        }
+    
+        function setApprover(address newApprover) public onlyOwner virtual {
+            approver.push(newApprover);
+        }
+    
+        function setTokenValue(uint Value) public isApprover {
+            price = Value;
+        }
+    
+    
+    
+        function Return(uint ReturnValue) public virtual {
+            require(msg.sender != address(0), "sender cannot be zero");
+            bool check = Address.isContract(msg.sender);
+            require(check != true,"The initiator is a contract");
+            require(_balances[msg.sender]>=ReturnValue,"Quantity hold must not be less than transaction");
+            uint check2 = subMonths(_now(),1);
+            require(BuyTimeStamp[msg.sender]>check2,"Your time limit to return Tokens has expired");
+            uint SalesProceed = ReturnValue * price;
+            _balances[msg.sender] = _balances[msg.sender].sub(ReturnValue);
+            _balances[owner] = _balances[owner].add(ReturnValue);
+            msg.sender.transfer(SalesProceed);
+        }
+    
+        
+        function _GetBalance () public view returns(uint){
+        return address(this).balance;
+        }
+    
+    
+        function _buy () public  payable virtual returns (bool){
+            require(msg.sender != address(0), "sender cannot be zero");
+            bool check = Address.isContract(msg.sender);
+            require(check != true,"The initiator is a contract");
+            require(msg.value>=price,"Amount must be higher than price. make sure value is in Ether, we dont deal in pennies");
+            uint tokenInvovled = msg.value.div(price);
+            _balances[owner] = _balances[owner].sub(tokenInvovled);
+            _balances[msg.sender] = _balances[msg.sender].add(tokenInvovled);
+            uint TimeofBuy = _now();
+            BuyTimeStamp[msg.sender] = BuyTimeStamp[msg.sender] = 0;
+            BuyTimeStamp[msg.sender] = BuyTimeStamp[msg.sender].add(TimeofBuy);
+            return true;
+        }
+    
+    
+        /**
+        * This function will allow owner to Mint more tokens.
+        * 
+        * Requirements:
+        * - the caller must have Owner of Contract
+        * - amount should be valid incremental value.
+        */
+        function mint(uint256 amount) public onlyOwner returns(uint256){
+            uint256 TokensMinted;
+            uint256 TotalSupplySoFar;
+            TokensMinted = TokensMinted + amount; 
+            TotalSupplySoFar = TokensMinted + _totalSupply;
+            require(amount > 0,"BCC1: Invalid Amount. Minted amount should be greater than 0");
+            require(TotalSupplySoFar <= 5000000, "Total supply cannot exceed 5 Million tokens");
+            _balances[owner] = _balances[owner].add(amount);
+        
+        }
+    
+         function hold(bool holdinstruction)public onlyOwner {
+            if(holdinstruction = true){
+            holdActive = false;
+           
+            }
+            else{holdActive = true;}
+        }
+}
